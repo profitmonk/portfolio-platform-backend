@@ -38,12 +38,24 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {
+    health_status = {
         "status": "healthy", 
         "environment": os.getenv("ENVIRONMENT", "development"),
         "message": "All systems operational",
         "features": ["authentication", "holdings", "database", "portfolios"]
     }
+    # Test database connection
+    try:
+        from app.database.connection import engine
+        from sqlalchemy import text
+        
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+            health_status["database"] = "connected"
+    except Exception as e:
+        health_status["database"] = f"error: {str(e)}"
+        health_status["status"] = "degraded"
+    return health_status
 
 # Test endpoint - we'll replace this later with real portfolios
 @app.get("/api/portfolios")
