@@ -1,0 +1,43 @@
+ 1023  cd portfolio_platform
+ 1024  history
+ 1025  less ../history.txt
+ 1026  conda activate venv_portfolio_platform
+ 1027  # Create main folders\nmkdir app\nmkdir app/models\nmkdir app/routes\nmkdir app/database\n\n# Confirm folders were created\nls -la
+ 1028  ls
+ 1029  ls -lrt app
+ 1030  ls -la
+ 1031  # Create Python files\ntouch app/__init__.py\ntouch app/main.py\ntouch app/models/__init__.py\ntouch app/routes/__init__.py\ntouch app/database/__init__.py\n\n# Create config files\ntouch requirements.txt\ntouch .env\ntouch .gitignore\n\n# Confirm files were created\nls -la app/
+ 1032  ls
+ 1033  ls -la
+ 1034  ls -la app/
+ 1035  vi requirements.txt
+ 1036  which pip
+ 1037  history
+ 1038  less ../history
+ 1039  less ../history.txt
+ 1040  conda info --envs
+ 1041  conda install pip
+ 1042  pip --version
+ 1043  pip install -r requirements.txt
+ 1044  cp requirements.txt requirements_temp.txt
+ 1045  vi requirements_temp.txt
+ 1046  pip install -r requirements_temp.txt
+ 1047  pip install -r requirements_temp.txt
+ 1048  pip install -r requirements_temp.txt
+ 1049  # Deactivate current environment\nconda deactivate\n\n# Remove the problematic environment\nconda env remove --name venv_portfolio_platform
+ 1050  # Create environment with stable Python version\nconda create --name venv_portfolio_platform python=3.11 pip\n\n# This will ask you to confirm - type 'y' and press Enter
+ 1051  python --version
+ 1052  pip --version
+ 1053  conda activate venv_portfolio_platform
+ 1054  python --version
+ 1055  history
+ 1056  python --version
+ 1057  pip --version
+ 1058  pip install -r requirements.txt
+ 1059  rm requirements_temp.txt
+ 1060  python -c "import fastapi; print('✅ FastAPI version:', fastapi.__version__)"
+ 1061  python -c "import sqlalchemy; print('✅ SQLAlchemy version:', sqlalchemy.__version__)"
+ 1062  python -c "import psycopg2; print('✅ psycopg2 works!')"
+ 1063  python -c "import pydantic, requests, pandas; print('✅ All core packages work!')"
+ 1064  pip list | grep -E "(fastapi|uvicorn|sqlalchemy|psycopg2|pydantic|alembic)"
+ 1065  python -c "\nimport fastapi\nimport uvicorn\nimport sqlalchemy\nimport psycopg2\nimport pydantic\nimport requests\nimport pandas\nimport alembic\nimport dotenv\nimport jose\nimport passlib\nprint('🎉 All packages imported successfully!')\nprint('Ready to build the portfolio platform!')\n"
