@@ -22,7 +22,7 @@ env/
 Thumbs.db
 
 # Local test files
-test_*.py
+#test_*.py
 cleanup_*.py
 
 # Logs
