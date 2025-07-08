@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.connection import Base
@@ -37,6 +37,10 @@ class Holding(Base):
     # Position tracking
     purchase_date = Column(DateTime(timezone=True), nullable=False)
     last_price_update = Column(DateTime(timezone=True), nullable=True)
+
+    # Activity tracking for auto-posts
+    announced_publicly = Column(Boolean, default=False)
+    performance_alert_threshold = Column(Float, default=10.0)  # 10% threshold
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

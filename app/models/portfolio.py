@@ -34,7 +34,15 @@ class Portfolio(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     last_calculated = Column(DateTime(timezone=True), nullable=True)
-    
+    # Social metrics
+    like_count = Column(Integer, default=0)
+    comment_count = Column(Integer, default=0)
+    view_count = Column(Integer, default=0)
+    share_count = Column(Integer, default=0)
+    engagement_score = Column(Float, default=0.0)
+    featured_by_user = Column(Boolean, default=False)
+    trending_score = Column(Float, default=0.0)    
+
     # Relationships (we'll activate these after creating other models)
     # owner = relationship("User", back_populates="portfolios")
     # holdings = relationship("Holding", back_populates="portfolio", cascade="all, delete-orphan")

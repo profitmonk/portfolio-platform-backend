@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 # Import your authentication routes
 from app.routes.auth import router as auth_router
 from app.routes.portfolio import router as portfolio_router
+from app.routes.social import router as social_router
 
 
 # Load environment variables
@@ -14,8 +15,8 @@ load_dotenv()
 # Create FastAPI app
 app = FastAPI(
     title="Portfolio Platform API",
-    description="Social portfolio tracking platform",
-    version="1.0.0"
+    description="Social portfolio tracking platform with posts, comments, and following",
+    version="2.0.0"
 )
 
 # Configure CORS (allows frontend to talk to backend)
@@ -30,11 +31,13 @@ app.add_middleware(
 # Include authentication routes
 app.include_router(auth_router)
 app.include_router(portfolio_router)
+app.include_router(social_router)
 
 
 @app.get("/")
 async def root():
-    return {"message": "Portfolio Platform API is running!", "status": "success"}
+    return {"message": "Portfolio Platform API v2.0 with Social Features!", "status": "success"}
+
 
 @app.get("/health")
 async def health_check():
@@ -42,7 +45,8 @@ async def health_check():
         "status": "healthy", 
         "environment": os.getenv("ENVIRONMENT", "development"),
         "message": "All systems operational",
-        "features": ["authentication", "holdings", "database", "portfolios"]
+        "features": ["authentication", "portfolios", "holdings", "social", "feed", "database"],
+        "database": "unknown"
     }
     # Test database connection
     try:
