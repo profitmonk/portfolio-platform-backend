@@ -49,6 +49,5 @@ class Post(Base):
     portfolio = relationship("Portfolio")
     holding = relationship("Holding")
     comments = relationship("Comment", back_populates="post", cascade="all, delete-orphan")
-    likes = relationship("Like", 
-                        primaryjoin="and_(Post.id==Like.likeable_id, Like.likeable_type=='post')",
-                        cascade="all, delete-orphan")
+    #Activate later 
+    #likes = relationship("Like", primaryjoin="and_(Post.id==Like.likeable_id, Like.likeable_type=='post')", cascade="all, delete-orphan")

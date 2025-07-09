@@ -26,6 +26,5 @@ class Comment(Base):
     post = relationship("Post", back_populates="comments")
     parent_comment = relationship("Comment", remote_side=[id])
     replies = relationship("Comment", cascade="all, delete-orphan")
-    likes = relationship("Like", 
-                        primaryjoin="and_(Comment.id==Like.likeable_id, Like.likeable_type=='comment')",
-                        cascade="all, delete-orphan")
+    #Activate later
+    #likes = relationship("Like", primaryjoin="and_(Comment.id==Like.likeable_id, Like.likeable_type=='comment')", cascade="all, delete-orphan")
