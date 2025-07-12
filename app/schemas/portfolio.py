@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime, date
 from app.models.holding import AssetType
+from app.schemas.portfolio_snapshot import PortfolioSnapshotResponse
 
 # Portfolio Schemas
 class PortfolioCreate(BaseModel):
@@ -43,6 +44,17 @@ class PortfolioResponse(BaseModel):
     owner_username: Optional[str] = None
     follower_count: int = 0
     holdings_count: int = 0
+
+    # Add to your existing PortfolioResponse schema:
+    verification_status: str = "unverified"
+    real_time_start_date: Optional[datetime] = None
+    trust_score: float = 0.0
+    historical_start_date: Optional[datetime] = None
+    initial_balance: float = 100000.0
+    rebalancing_frequency: str = "flexible"
+    
+    # Add snapshots to the response
+    snapshots: List[PortfolioSnapshotResponse] = []
     
     class Config:
         from_attributes = True

@@ -7,6 +7,7 @@ venv/
 env/
 .env
 .env.local
+gitPush.sh
 
 # Database
 *.db

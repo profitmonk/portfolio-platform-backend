@@ -13,6 +13,10 @@ from app.models.user_follow import UserFollow
 from app.models.user_preferences import UserPreferences, InvestmentStyle, RiskTolerance
 from app.models.feed_event import FeedEvent, EventType
 
+# Import new portfolio snapshot models
+from app.models.portfolio_snapshot import PortfolioSnapshot
+from app.models.asset_price import AssetPrice
+
 # Import Base for migrations
 from app.database.connection import Base
 
@@ -35,5 +39,7 @@ __all__ = [
     "RiskTolerance", 
     "FeedEvent",
     "EventType",
+    "PortfolioSnapshot",
+    "AssetPrice",
     "Base"
 ]

@@ -43,9 +43,23 @@ class Portfolio(Base):
     featured_by_user = Column(Boolean, default=False)
     trending_score = Column(Float, default=0.0)    
 
+    # Add these new fields to your existing Portfolio class:
+    
+    # Verification and trust system
+    verification_status = Column(String, default='unverified')  # unverified, partial, verified
+    real_time_start_date = Column(DateTime(timezone=True), nullable=True)  # When real tracking began
+    trust_score = Column(Float, default=0.0)  # 0-100 based on verification level
+    historical_start_date = Column(DateTime(timezone=True), nullable=True)  # First snapshot date
+    
+    # Portfolio snapshot settings
+    initial_balance = Column(Float, default=100000.0)  # Starting balance ($100K default)
+    rebalancing_frequency = Column(String, default='flexible')  # flexible, monthly, quarterly
+
     # Relationships (we'll activate these after creating other models)
     # owner = relationship("User", back_populates="portfolios")
     # holdings = relationship("Holding", back_populates="portfolio", cascade="all, delete-orphan")
+    # Add this to the relationships section:
+    # snapshots = relationship("PortfolioSnapshot", back_populates="portfolio", cascade="all, delete-orphan")
     
     @property
     def holdings_count(self):

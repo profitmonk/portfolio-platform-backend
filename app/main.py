@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from app.routes.auth import router as auth_router
 from app.routes.portfolio import router as portfolio_router
 from app.routes.social import router as social_router
+from app.routes.portfolio_snapshot import router as portfolio_snapshot_router
 
 
 # Load environment variables
@@ -32,6 +33,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(portfolio_router)
 app.include_router(social_router)
+app.include_router(portfolio_snapshot_router)
 
 
 @app.get("/")
