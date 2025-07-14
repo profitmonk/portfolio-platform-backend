@@ -1,69 +1,279 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+import sys
 import os
+# Add the parent directory to Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+import requests
+import os
+from datetime import datetime, timedelta
+from typing import List, Dict, Optional
+from sqlalchemy.orm import Session
+from sqlalchemy import func, and_, text
+import time
+import logging
+
+from app.database.connection import get_db
+from app.models.asset_price import AssetPrice
+from app.services.stock_universe_service import StockUniverseService
 from dotenv import load_dotenv
 
-# Keep absolute imports - they're correct
-from app.routes.auth import router as auth_router
-
-# Load environment variables
 load_dotenv()
 
-# Create FastAPI app
-app = FastAPI(
-    title="Portfolio Platform API",
-    description="Social portfolio tracking platform",
-    version="1.0.0"
-)
+# Add logging to see what's taking time
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# Configure CORS (allows frontend to talk to backend)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # We'll make this more secure later
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Include authentication routes
-app.include_router(auth_router)
-
-@app.get("/")
-async def root():
-    return {"message": "Portfolio Platform API is running!", "status": "success"}
-
-@app.get("/health")
-async def health_check():
-    return {
-        "status": "healthy", 
-        "environment": os.getenv("ENVIRONMENT", "development"),
-        "message": "All systems operational",
-        "features": ["authentication", "database", "portfolios"]
-    }
-
-# Test endpoint - we'll replace this later with real portfolios
-@app.get("/api/portfolios")
-async def get_portfolios():
-    return {
-        "portfolios": [
+class FastPriceFetchingService:
+    def __init__(self):
+        self.api_key = os.getenv("FINANCIAL_MODELING_PREP_API_KEY")
+        self.stable_url = "https://financialmodelingprep.com/stable"
+        self.universe_service = StockUniverseService()
+    
+    def get_missing_price_data_fast(self, db: Session, symbols: List[str], start_date: str, end_date: str) -> Dict[str, bool]:
+        """Quickly check which symbols need data - optimized query"""
+        logger.info(f"🔍 Quick check for missing data...")
+        start_time = time.time()
+        
+        missing_data = {}
+        
+        # Single query to check all symbols at once
+        symbol_counts = db.execute(
+            text("""
+                SELECT symbol, COUNT(*) as count 
+                FROM asset_prices 
+                WHERE symbol IN :symbols 
+                AND date >= :start_date 
+                AND date <= :end_date 
+                GROUP BY symbol
+            """),
             {
-                "id": 1,
-                "name": "Tech Growth Portfolio",
-                "total_value": 125000,
-                "daily_return": 2.5,
-                "total_return": 15.8
-            },
-            {
-                "id": 2,
-                "name": "Value Dividend Portfolio", 
-                "total_value": 85000,
-                "daily_return": -0.3,
-                "total_return": 8.2
+                'symbols': tuple(symbols),
+                'start_date': start_date,
+                'end_date': end_date
             }
-        ]
-    }
+        ).fetchall()
+        
+        # Convert to dict
+        existing_counts = {row[0]: row[1] for row in symbol_counts}
+        
+        # If a symbol has less than 4000 records (rough estimate for 20 years), fetch it
+        for symbol in symbols:
+            count = existing_counts.get(symbol, 0)
+            if count < 4000:  # Roughly 20 years of trading days
+                missing_data[symbol] = True
+                logger.info(f"  📊 {symbol}: has {count} records, needs refresh")
+            else:
+                logger.info(f"  ✅ {symbol}: has {count} records, looks complete")
+        
+        elapsed = time.time() - start_time
+        logger.info(f"🕒 Missing data check took {elapsed:.2f} seconds")
+        return missing_data
 
+    def fetch_historical_prices(self, symbol: str, start_date: str, end_date: str) -> List[Dict]:
+        """Your existing fetch method with timing"""
+        logger.info(f"📡 Fetching {symbol}...")
+        start_time = time.time()
+        
+        try:
+            url = f"{self.stable_url}/historical-price-eod/full?symbol={symbol}&from={start_date}&to={end_date}&apikey={self.api_key}"
+            
+            response = requests.get(url, timeout=30)  # Add timeout
+            data = response.json()
+            
+            # Handle both response formats
+            if isinstance(data, list):
+                result = data
+            elif isinstance(data, dict) and 'historical' in data:
+                result = data['historical']
+            else:
+                logger.warning(f"  ❌ {symbol}: unexpected response format")
+                return []
+                
+            elapsed = time.time() - start_time
+            logger.info(f"  ✅ {symbol}: fetched {len(result)} records in {elapsed:.2f}s")
+            return result
+                
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"  ❌ {symbol}: error after {elapsed:.2f}s - {e}")
+            return []
+
+    def store_prices_bulk(self, db: Session, symbol: str, price_data: List[Dict]) -> int:
+        """Optimized bulk storage - the main performance bottleneck"""
+        if not price_data:
+            return 0
+            
+        logger.info(f"💾 Storing {len(price_data)} records for {symbol}...")
+        start_time = time.time()
+        
+        try:
+            # First, delete existing data for this symbol in the date range
+            # This is faster than checking each record individually
+            if price_data:
+                min_date = min(record['date'] for record in price_data)
+                max_date = max(record['date'] for record in price_data)
+                
+                delete_start = time.time()
+                deleted = db.execute(
+                    text("""
+                        DELETE FROM asset_prices 
+                        WHERE symbol = :symbol 
+                        AND date >= :min_date 
+                        AND date <= :max_date
+                    """),
+                    {
+                        'symbol': symbol,
+                        'min_date': min_date,
+                        'max_date': max_date
+                    }
+                )
+                db.commit()
+                delete_elapsed = time.time() - delete_start
+                logger.info(f"  🗑️  Cleared existing data in {delete_elapsed:.2f}s")
+            
+            # Prepare bulk insert data
+            prep_start = time.time()
+            insert_data = []
+            for record in price_data:
+                adj_close = record.get('adjClose', record.get('close', 0))
+                insert_data.append({
+                    'symbol': symbol,
+                    'date': record['date'],
+                    'open_price': record.get('open', 0),
+                    'high_price': record.get('high', 0),
+                    'low_price': record.get('low', 0),
+                    'close_price': record.get('close', 0),
+                    'volume': record.get('volume', 0),
+                    'adjusted_close': adj_close
+                })
+            
+            prep_elapsed = time.time() - prep_start
+            logger.info(f"  📋 Prepared data in {prep_elapsed:.2f}s")
+            
+            # Bulk insert using SQLAlchemy's bulk_insert_mappings
+            bulk_start = time.time()
+            db.bulk_insert_mappings(AssetPrice, insert_data)
+            db.commit()
+            bulk_elapsed = time.time() - bulk_start
+            
+            total_elapsed = time.time() - start_time
+            logger.info(f"  ✅ Bulk inserted {len(insert_data)} records in {bulk_elapsed:.2f}s (total: {total_elapsed:.2f}s)")
+            
+            return len(insert_data)
+            
+        except Exception as e:
+            logger.error(f"  ❌ {symbol}: error storing data - {e}")
+            db.rollback()
+            return 0
+
+    def run_price_collection_fast(self, start_date: str = "2005-01-01", end_date: str = "2024-12-31", max_symbols: int = 3):
+        """Optimized main collection function with detailed timing"""
+        logger.info(f"🚀 Starting FAST price collection from {start_date} to {end_date}...")
+        logger.info(f"📊 Processing first {max_symbols} symbols...")
+        
+        total_start_time = time.time()
+        
+        # Get symbols
+        all_symbols = self.universe_service.get_all_symbols_to_track()[:max_symbols]
+        logger.info(f"🎯 Symbols to process: {all_symbols}")
+        
+        # Get database session
+        db_gen = get_db()
+        db = next(db_gen)
+        
+        try:
+            # Quick missing data check
+            missing_data = self.get_missing_price_data_fast(db, all_symbols, start_date, end_date)
+            
+            if not missing_data:
+                logger.info("✅ All price data is already up to date!")
+                return
+            
+            logger.info(f"\n🎯 Need to fetch data for {len(missing_data)} symbols")
+            
+            total_fetched = 0
+            total_stored = 0
+            
+            # Process each symbol
+            for symbol in missing_data.keys():
+                symbol_start = time.time()
+                logger.info(f"\n📈 Processing {symbol}...")
+                
+                # Fetch data
+                fetch_start = time.time()
+                price_data = self.fetch_historical_prices(symbol, start_date, end_date)
+                fetch_elapsed = time.time() - fetch_start
+                
+                if price_data:
+                    # Store data
+                    store_start = time.time()
+                    stored = self.store_prices_bulk(db, symbol, price_data)
+                    store_elapsed = time.time() - store_start
+                    
+                    total_fetched += len(price_data)
+                    total_stored += stored
+                    
+                    symbol_elapsed = time.time() - symbol_start
+                    logger.info(f"  ⏱️  {symbol} total time: {symbol_elapsed:.2f}s (fetch: {fetch_elapsed:.2f}s, store: {store_elapsed:.2f}s)")
+                
+                # Small delay to be nice to the API
+                time.sleep(0.1)
+            
+            total_elapsed = time.time() - total_start_time
+            
+            logger.info(f"\n🎉 FAST collection complete!")
+            logger.info(f"  ⏱️  Total time: {total_elapsed:.2f} seconds ({total_elapsed/60:.2f} minutes)")
+            logger.info(f"  📊 Records fetched: {total_fetched}")
+            logger.info(f"  💾 Records stored: {total_stored}")
+            logger.info(f"  ⚡ Average per symbol: {total_elapsed/len(missing_data):.2f} seconds")
+            
+        finally:
+            db.close()
+
+    def check_database_performance(self):
+        """Diagnose database performance issues"""
+        logger.info("🔧 Running database performance check...")
+        
+        db_gen = get_db()
+        db = next(db_gen)
+        
+        try:
+            # Check if we have indexes
+            result = db.execute(text("SHOW INDEX FROM asset_prices")).fetchall()
+            logger.info(f"📋 Current indexes: {len(result)}")
+            for row in result:
+                logger.info(f"  - {row}")
+            
+            # Test query performance
+            start_time = time.time()
+            count = db.execute(text("SELECT COUNT(*) FROM asset_prices")).scalar()
+            elapsed = time.time() - start_time
+            
+            logger.info(f"📊 Total records: {count:,} (query took {elapsed:.3f}s)")
+            
+            # Suggest optimizations
+            logger.info("\n💡 Performance suggestions:")
+            logger.info("  1. Add composite index: CREATE INDEX idx_symbol_date ON asset_prices(symbol, date);")
+            logger.info("  2. Consider partitioning by year if dataset grows large")
+            logger.info("  3. Use bulk operations instead of individual inserts")
+            
+        finally:
+            db.close()
+
+# Test the optimized service
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    service = FastPriceFetchingService()
+    
+    logger.info("🧪 Testing FAST Price Fetching Service...")
+    logger.info("="*80)
+    
+    # First check database performance
+    service.check_database_performance()
+    
+    logger.info("\n" + "="*80)
+    
+    # Run the fast collection
+    service.run_price_collection_fast(
+        start_date="2005-01-01", 
+        end_date="2024-12-31",
+        max_symbols=3
+    )

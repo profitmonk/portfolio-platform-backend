@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Index, BigInteger
 from sqlalchemy.sql import func
 from app.database.connection import Base
 
@@ -6,23 +6,22 @@ class AssetPrice(Base):
     __tablename__ = "asset_prices"
     
     id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String, nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
     
-    # Asset identification
-    symbol = Column(String, nullable=False, index=True)  # AAPL, MSFT, etc.
+    # OHLCV data
+    open_price = Column(Float, nullable=False)
+    high_price = Column(Float, nullable=False)
+    low_price = Column(Float, nullable=False)
+    close_price = Column(Float, nullable=False)
+    volume = Column(BigInteger, default=0)
+    adjusted_close = Column(Float, nullable=False)  # Make sure this field exists
     
-    # Price data
-    date = Column(DateTime(timezone=True), nullable=False, index=True)
-    open_price = Column(Float, nullable=True)
-    high_price = Column(Float, nullable=True)
-    low_price = Column(Float, nullable=True)
-    close_price = Column(Float, nullable=False)  # Main price we'll use
-    volume = Column(Float, nullable=True)
-    
-    # Data source tracking
-    data_source = Column(String, default="financialmodelingprep")
+    # Metadata
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
-    # Ensure one price per symbol per date
+    # Composite index for fast lookups
     __table_args__ = (
-        UniqueConstraint('symbol', 'date', name='unique_symbol_date'),
+        Index('idx_symbol_date', 'symbol', 'date'),
+        Index('idx_date_symbol', 'date', 'symbol'),
     )
