@@ -157,7 +157,7 @@ if __name__ == "__main__":
         exit(1)
     
     # For testing, uncomment this line to run immediately:
-    test_update()
+    # test_update()
     
     while True:
         schedule.run_pending()
