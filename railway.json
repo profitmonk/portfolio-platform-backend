@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "python reset_migrations.py && uvicorn app.main:app --host 0.0.0.0 --port $PORT",
+    "startCommand": "python start.py",
     "healthcheckPath": "/health"
   }
 }
