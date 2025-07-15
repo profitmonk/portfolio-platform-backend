@@ -3,6 +3,7 @@ import schedule
 import time
 import logging
 from datetime import datetime, timedelta
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from app.services.price_fetching_service import PostgreSQLOptimizedPriceFetchingService
 from dotenv import load_dotenv
 
