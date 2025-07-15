@@ -21,37 +21,47 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 class DailyPriceUpdateService(PostgreSQLOptimizedPriceFetchingService):
-    """Simplified daily update service without conflict resolution"""
+    """Simplified daily update service with duplicate protection"""
     
     def store_prices_simple_bulk(self, db, symbol: str, price_data: list) -> int:
-        """Simple bulk insert for daily updates - no conflict resolution needed"""
+        """Simple bulk insert with duplicate checking"""
         if not price_data:
             return 0
         
-        logger.info(f"💾 Storing {len(price_data)} records for {symbol}...")
+        logger.info(f"💾 Checking and storing {len(price_data)} records for {symbol}...")
         
         try:
-            insert_data = []
+            new_records = []
             for record in price_data:
-                adj_close = record.get('adjClose', record.get('close', 0))
-                insert_data.append({
-                    'symbol': symbol,
-                    'date': record['date'],
-                    'open_price': record.get('open', 0),
-                    'high_price': record.get('high', 0),
-                    'low_price': record.get('low', 0),
-                    'close_price': record.get('close', 0),
-                    'volume': record.get('volume', 0),
-                    'adjusted_close': adj_close
-                })
+                # Check if this record already exists
+                existing = db.query(AssetPrice).filter(
+                    AssetPrice.symbol == symbol,
+                    AssetPrice.date == record['date']
+                ).first()
+                
+                if not existing:
+                    adj_close = record.get('adjClose', record.get('close', 0))
+                    new_records.append({
+                        'symbol': symbol,
+                        'date': record['date'],
+                        'open_price': record.get('open', 0),
+                        'high_price': record.get('high', 0),
+                        'low_price': record.get('low', 0),
+                        'close_price': record.get('close', 0),
+                        'volume': record.get('volume', 0),
+                        'adjusted_close': adj_close
+                    })
             
-            # Simple bulk insert
-            db.bulk_insert_mappings(AssetPrice, insert_data)
-            db.commit()
-            
-            logger.info(f"  ✅ {symbol}: stored {len(insert_data)} records")
-            return len(insert_data)
-            
+            if new_records:
+                # Only insert truly new records
+                db.bulk_insert_mappings(AssetPrice, new_records)
+                db.commit()
+                logger.info(f"  ✅ {symbol}: stored {len(new_records)} new records")
+                return len(new_records)
+            else:
+                logger.info(f"  📋 {symbol}: no new records to store")
+                return 0
+                
         except Exception as e:
             logger.error(f"  ❌ Error storing {symbol}: {e}")
             db.rollback()
@@ -64,6 +74,12 @@ class DailyPriceUpdateService(PostgreSQLOptimizedPriceFetchingService):
             target_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
         
         logger.info(f"🚀 Starting daily price update for {target_date}")
+        
+        # Check if it's a weekend (no market data expected)
+        date_obj = datetime.strptime(target_date, "%Y-%m-%d")
+        if date_obj.weekday() >= 5:  # Saturday = 5, Sunday = 6
+            logger.info(f"📅 {target_date} is a weekend - no market data expected")
+            return
         
         # Get all symbols from universe service
         all_symbols = self.universe_service.get_all_symbols_to_track()
@@ -87,16 +103,16 @@ class DailyPriceUpdateService(PostgreSQLOptimizedPriceFetchingService):
                     price_data = self.fetch_historical_prices(symbol, target_date, target_date)
                     
                     if price_data:
-                        # Store using simple bulk insert
+                        # Store using duplicate-protected bulk insert
                         stored = self.store_prices_simple_bulk(db, symbol, price_data)
                         total_fetched += len(price_data)
                         total_stored += stored
                         success_count += 1
                     else:
-                        logger.warning(f"  ⚠️  No data found for {symbol} on {target_date}")
+                        logger.debug(f"  📭 No data for {symbol} on {target_date}")
                     
-                    # Small delay to be nice to API
-                    time.sleep(0.1)
+                    # Delay to be nice to API
+                    time.sleep(0.5)  # Increased from 0.1 to avoid rate limits
                     
                 except Exception as e:
                     logger.error(f"  ❌ Failed to process {symbol}: {e}")
@@ -104,8 +120,10 @@ class DailyPriceUpdateService(PostgreSQLOptimizedPriceFetchingService):
                     continue
             
             logger.info(f"\n🎉 Daily update complete for {target_date}!")
-            logger.info(f"  ✅ Successful: {success_count} symbols")
-            logger.info(f"  ❌ Errors: {error_count} symbols") 
+            logger.info(f"  🎯 Total symbols attempted: {len(all_symbols)}")
+            logger.info(f"  ✅ Successful updates: {success_count}")
+            logger.info(f"  ❌ Failed updates: {error_count}")
+            logger.info(f"  📈 Success rate: {(success_count/len(all_symbols)*100):.1f}%")
             logger.info(f"  📊 Records fetched: {total_fetched}")
             logger.info(f"  💾 Records stored: {total_stored}")
             
@@ -137,6 +155,12 @@ def test_update():
     logger.info("🧪 Running test update...")
     daily_eod_update()
 
+def test_update_specific_date(target_date: str):
+    """Test function for specific date"""
+    logger.info(f"🧪 Running test update for {target_date}...")
+    service = DailyPriceUpdateService()
+    service.run_daily_update(target_date)
+
 # Schedule for 6:30 PM EST (after markets close) - weekdays only
 schedule.every().monday.at("18:30").do(daily_eod_update)
 schedule.every().tuesday.at("18:30").do(daily_eod_update)
@@ -156,9 +180,17 @@ if __name__ == "__main__":
         logger.error("❌ No API key found!")
         exit(1)
     
-    # For testing, uncomment this line to run immediately:
-    # test_update()
+    # For testing - run immediately (duplicate protection prevents duplicates)
+    logger.info("🧪 Running test update for today...")
+    test_update()
+    test_update_specific_date("2025-07-12")
     
+    # Then start scheduler for future runs
+    logger.info("🔄 Starting scheduler for future runs...")
     while True:
         schedule.run_pending()
         time.sleep(60)  # Check every minute
+        
+        # Heartbeat every hour
+        if int(time.time()) % 3600 == 0:
+            logger.info("💓 Worker service heartbeat - still running...")
