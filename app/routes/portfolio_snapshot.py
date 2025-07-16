@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List
+from datetime import datetime, timezone
 import csv
 import io
 from datetime import datetime
@@ -41,7 +42,7 @@ async def create_portfolio_snapshot(
         )
     
     # Check if snapshot date is not in the future
-    if snapshot_data.snapshot_date > datetime.now():
+    if snapshot_data.snapshot_date > datetime.now(timezone.utc):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Snapshot date cannot be in the future"
