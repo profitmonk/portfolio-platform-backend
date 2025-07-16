@@ -8,6 +8,7 @@ from app.routes.auth import router as auth_router
 from app.routes.portfolio import router as portfolio_router
 from app.routes.social import router as social_router
 from app.routes.portfolio_snapshot import router as portfolio_snapshot_router
+from app.routes.asset_prices import router as asset_prices_router
 
 
 # Load environment variables
@@ -34,6 +35,7 @@ app.include_router(auth_router)
 app.include_router(portfolio_router)
 app.include_router(social_router)
 app.include_router(portfolio_snapshot_router)
+app.include_router(asset_prices_router)
 
 
 @app.get("/")
