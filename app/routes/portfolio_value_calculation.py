@@ -5,7 +5,7 @@ import logging
 from typing import List, Dict, Optional
 from pydantic import BaseModel
 
-from app.database import get_db
+from app.database.connection import get_db
 from app.models.portfolio import Portfolio
 from app.models.portfolio_snapshot import PortfolioSnapshot
 from app.models.asset_price import AssetPrice
