@@ -86,7 +86,10 @@ async def calculate_portfolio_values(
         print(f"Symbols needed: {list(all_symbols)}")
         
         # Get date range - from first snapshot to now
-        start_date = snapshots[0].snapshot_date.date()
+        if hasattr(snapshots[0].snapshot_date, 'date'):
+            start_date = snapshots[0].snapshot_date.date()
+        else:
+            start_date = snapshots[0].snapshot_date
         end_date = datetime.now().date()
         
         # Fetch ALL price data for the entire period
@@ -113,7 +116,12 @@ async def calculate_portfolio_values(
         
         for i, snapshot in enumerate(snapshots):
             try:
-                rebalance_date = snapshot.snapshot_date.date().strftime('%Y-%m-%d')
+                # Fix: snapshot_date is already a datetime.date, not string
+                if hasattr(snapshot.snapshot_date, 'date'):
+                    rebalance_date = snapshot.snapshot_date.date().strftime('%Y-%m-%d')
+                else:
+                    rebalance_date = snapshot.snapshot_date.strftime('%Y-%m-%d')
+                    
                 print(f"\n=== REBALANCE {i+1} on {rebalance_date} ===")
                 print(f"Portfolio value before rebalance: ${portfolio_value:,.2f}")
                 
@@ -129,12 +137,30 @@ async def calculate_portfolio_values(
                     errors.append(f"Rebalance {i+1}: Asset/weight count mismatch")
                     continue
                 
-                # Verify weights sum to 100%
-                weight_sum = sum(new_weights)
-                if abs(weight_sum - 100.0) > 0.1:
-                    errors.append(f"Rebalance {i+1}: Weights sum to {weight_sum}%, not 100%")
-                    # Normalize weights
-                    new_weights = [w * 100.0 / weight_sum for w in new_weights]
+                # Check for missing symbols and skip them
+                available_assets = []
+                available_weights = []
+                
+                for asset, weight in zip(new_assets, new_weights):
+                    if asset in price_data:
+                        available_assets.append(asset)
+                        available_weights.append(weight)
+                    else:
+                        errors.append(f"Rebalance {i+1}: No price data for {asset} - skipping")
+                        print(f"WARNING: Skipping {asset} - no price data available")
+                
+                if not available_assets:
+                    errors.append(f"Rebalance {i+1}: No assets have price data")
+                    continue
+                
+                # Normalize weights for available assets only
+                total_available_weight = sum(available_weights)
+                if total_available_weight > 0:
+                    available_weights = [w * 100.0 / total_available_weight for w in available_weights]
+                
+                # Verify normalized weights sum to 100%
+                weight_sum = sum(available_weights)
+                print(f"Using {len(available_assets)} assets with weights summing to {weight_sum:.1f}%")
                 
                 # STEP 1: SELL ALL CURRENT HOLDINGS
                 if current_holdings:
@@ -142,15 +168,11 @@ async def calculate_portfolio_values(
                     portfolio_value = calculate_portfolio_value_on_date(current_holdings, price_data, rebalance_date)
                     print(f"Portfolio value after selling: ${portfolio_value:,.2f}")
                 
-                # STEP 2: BUY NEW ALLOCATION
-                print(f"Buying new allocation: {list(zip(new_assets, new_weights))}")
+                # STEP 2: BUY NEW ALLOCATION (only available assets)
+                print(f"Buying new allocation: {list(zip(available_assets, available_weights))}")
                 new_holdings = {}
                 
-                for asset, weight_pct in zip(new_assets, new_weights):
-                    if asset not in price_data:
-                        errors.append(f"Rebalance {i+1}: No price data for {asset}")
-                        continue
-                    
+                for asset, weight_pct in zip(available_assets, available_weights):
                     # Find price on rebalance date
                     price = find_closest_price(price_data[asset], rebalance_date)
                     if not price:
@@ -186,9 +208,13 @@ async def calculate_portfolio_values(
                 
                 # STEP 4: CALCULATE INTERMEDIATE VALUES (weekly) until next rebalance
                 if i < len(snapshots) - 1:  # Not the last snapshot
-                    next_rebalance_date = snapshots[i + 1].snapshot_date.date()
+                    if hasattr(snapshots[i + 1].snapshot_date, 'date'):
+                        next_rebalance_date = snapshots[i + 1].snapshot_date.date()
+                    else:
+                        next_rebalance_date = snapshots[i + 1].snapshot_date
+                    
                     intermediate_values = calculate_intermediate_values(
-                        current_holdings, price_data, rebalance_date, next_rebalance_date
+                        current_holdings, price_data, rebalance_date, next_rebalance_date.strftime('%Y-%m-%d')
                     )
                     portfolio_value = intermediate_values[-1] if intermediate_values else portfolio_value
                 
